@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Styled Headers for Each Section</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+      }
+
+      .table-container {
+        width: 100%;
+        overflow-x: auto;
+      }
+
+      table {
+        width: max-content; /* Allow the table to take the required width */
+        border-collapse: collapse;
+        margin-bottom: 20px;
+      }
+
+      th,
+      td {
+        padding: 8px;
+        text-align: center;
+        border: 1px solid #ddd;
+        white-space: nowrap; /* Prevents text wrapping */
+      }
+
+      /* Styling for all header rows */
+      th {
+        background-color: #f2f2f2;
+        color: #333;
+        font-weight: bold;
+      }
+
+      /* Specific styling for main headers */
+      .main-header th,
+      .main-header td {
+        background-color: #dcd6f7; /* Light lavender */
+        color: #333;
+        font-weight: bold;
+        text-align: center;
+      }
+
+      /* Specific styling for sub-headers */
+      .sub-header th,
+      .sub-header td {
+        background-color: #ffc107; /* Yellow */
+        color: #333;
+        font-weight: bold;
+      }
+
+      /* Sticky column for School names */
+      .sticky-column {
+        position: sticky;
+        left: 0;
+        background-color: #fff;
+        z-index: 2;
+        border-right: 2px solid #ddd;
+      }
+
+      /* Styling for sticky table headers */
+      thead th {
+        position: sticky;
+        top: 0;
+        background-color: #f2f2f2;
+        z-index: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="table-container" id="tableContainer"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+      // Function to load the Excel file from the local directory
+      function loadExcelFromFile() {
+        const filePath = "./Deadline Buckets.xlsx";
+
+        fetch(filePath)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`Unable to load file: ${response.statusText}`);
+            }
+            return response.arrayBuffer();
+          })
+          .then((data) => {
+            const workbook = XLSX.read(new Uint8Array(data), { type: "array" });
+
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+
+            // Convert the worksheet into JSON to build the HTML table manually
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+            // Create the table element
+            let table = "<table>";
+
+            // Add main header row for School and Rounds
+            table += "<thead>";
+            table += "<tr class='main-header'>";
+            table += `<th class="sticky-column" rowspan="2">${jsonData[0][0]}</th>`; // School header with rowspan
+            // Add main headers for rounds with colspan
+            for (let i = 1; i < jsonData[0].length; i += 2) {
+              if (jsonData[0][i] !== undefined) {
+                table += `<th colspan="2">${jsonData[0][i]}</th>`; // Round header with colspan for Deadline and Decision
+              }
+            }
+            table += "</tr>";
+
+            // // Add sub-header row for Deadline and Decision
+            // table += "<tr class='sub-header'>";
+            // // Add sub-headers for each round
+            // for (let i = 1; i < jsonData[0].length; i += 2) {
+            //   table += "<th>Deadline</th><th>Decision</th>";
+            // }
+            table += "</tr>";
+            table += "</thead><tbody>";
+
+            // Add table rows
+            for (let i = 1; i < jsonData.length; i++) {
+              // Check if it's a repeating main header row (matches the initial main header structure)
+              if (isRepeatingMainHeader(jsonData, i)) {
+                table += "<tr class='main-header'>";
+              }
+              // Check if it's a repeating sub-header row (matches the initial sub-header structure)
+              else if (isRepeatingSubHeader(jsonData, i)) {
+                table += "<tr class='sub-header'>";
+              }
+              // Regular row
+              else {
+                table += "<tr>";
+              }
+
+              table += `<td class="sticky-column">${jsonData[i][0] || ""}</td>`; // School column
+              for (let j = 1; j < jsonData[i].length; j += 2) {
+                let deadline = jsonData[i][j]
+                  ? excelDateToJSDate(jsonData[i][j])
+                  : ""; // Convert Excel date to readable format
+                let decision = jsonData[i][j + 1]
+                  ? excelDateToJSDate(jsonData[i][j + 1])
+                  : ""; // Convert Excel date to readable format
+                table += `<td>${deadline}</td><td>${decision}</td>`;
+              }
+              table += "</tr>";
+            }
+
+            table += "</tbody></table>";
+
+            // Insert the table into the div
+            document.getElementById("tableContainer").innerHTML = table;
+          })
+          .catch((error) => {
+            console.error("Error loading Excel file:", error);
+          });
+      }
+
+      // Function to convert Excel serial date to JS date
+      function excelDateToJSDate(serial) {
+        // Only convert if it's a number, skip if it's not
+        if (typeof serial === "number") {
+          var utc_days = Math.floor(serial - 25569);
+          var utc_value = utc_days * 86400;
+          var date_info = new Date(utc_value * 1000);
+          var fractional_day = serial - Math.floor(serial) + 0.0000001;
+          var total_seconds = Math.floor(86400 * fractional_day);
+          var seconds = total_seconds % 60;
+
+          total_seconds -= seconds;
+          var hours = Math.floor(total_seconds / (60 * 60));
+          var minutes = Math.floor(total_seconds / 60) % 60;
+
+          return (
+            date_info.getMonth() +
+            1 +
+            "/" +
+            date_info.getDate() +
+            "/" +
+            date_info.getFullYear()
+          );
+        } else {
+          return serial; // Return as-is if it's not a number (for headers)
+        }
+      }
+
+      // Function to check if the current row is a repeating main header
+      function isRepeatingMainHeader(jsonData, rowIndex) {
+        // Check if the first cell in this row matches the main header text, e.g., 'School'
+        if (jsonData[rowIndex][0] === jsonData[0][0]) {
+          return true;
+        }
+        return false;
+      }
+
+      // Function to check if the current row is a repeating sub-header
+      function isRepeatingSubHeader(jsonData, rowIndex) {
+        // Check if the second cell in this row matches 'Deadline' (assuming it's always the same)
+        if (
+          jsonData[rowIndex][1] === "Deadline" ||
+          jsonData[rowIndex][1] === "Decision"
+        ) {
+          return true;
+        }
+        return false;
+      }
+
+      // Load Excel file automatically on page load
+      window.onload = loadExcelFromFile;
+    </script>
+  </body>
+</html>
